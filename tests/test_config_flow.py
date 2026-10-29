@@ -25,7 +25,7 @@ async def test_user_flow(hass: HomeAssistant, seerr: AiohttpClientMocker) -> Non
         result["flow_id"], {CONF_URL: "10.2.6.95", CONF_API_KEY: "k"}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Seerr (10.2.6.95)"
+    assert result["title"] == "Seerr Requests (10.2.6.95)"
     assert result["data"] == {CONF_URL: URL_BASE, CONF_API_KEY: "k"}
 
 

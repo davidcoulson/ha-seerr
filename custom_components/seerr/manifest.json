@@ -1,6 +1,6 @@
 {
   "domain": "seerr",
-  "name": "Seerr",
+  "name": "Seerr Requests",
   "after_dependencies": [
     "llm"
   ],
@@ -17,5 +17,5 @@
     "custom_components.seerr"
   ],
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

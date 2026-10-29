@@ -63,7 +63,7 @@ def entry() -> MockConfigEntry:
     """Return a config entry."""
     return MockConfigEntry(
         domain=DOMAIN,
-        title="Seerr (10.2.6.95)",
+        title="Seerr Requests (10.2.6.95)",
         unique_id=URL_BASE,
         data={CONF_URL: URL_BASE, CONF_API_KEY: "test-key"},
     )

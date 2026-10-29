@@ -73,7 +73,7 @@ class SeerrConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 if await self._async_validate(url, user_input[CONF_API_KEY], errors):
                     return self.async_create_entry(
-                        title=f"Seerr ({URL(url).host})",
+                        title=f"Seerr Requests ({URL(url).host})",
                         data={CONF_URL: url, CONF_API_KEY: user_input[CONF_API_KEY]},
                     )
         return self.async_show_form(

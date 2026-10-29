@@ -1,4 +1,4 @@
-# Seerr for Home Assistant
+# Seerr Requests for Home Assistant
 
 Search and request movies and TV shows through [Seerr](https://github.com/seerr-team/seerr)
 (also Overseerr and Jellyseerr) from Home Assistant: from automations, scripts, or by voice with
@@ -7,11 +7,15 @@ an LLM conversation agent.
 **TL;DR:** add the integration with your Seerr URL and API key, then say "add the TV show Dig to
 Plex" to an Assist pipeline whose conversation agent uses the Assist LLM API.
 
+Home Assistant's built-in Seerr integration (domain `overseerr`) has sensors, events and
+actions that search by text and request by TMDB id. This one adds requests by title, which
+pick the show or film you mean, and tools for an LLM voice assistant. Both can be set up at once.
+
 ## Setup
 
 1. Copy `custom_components/seerr` to your Home Assistant `custom_components` folder (or add this
    repository to HACS as a custom repository) and restart.
-2. Settings → Devices & services → Add integration → Seerr. Enter the server URL (a bare host
+2. Settings → Devices & services → Add integration → Seerr Requests. Enter the server URL (a bare host
    uses `http` and port 5055) and the API key from Seerr's Settings → General.
 
 Requests are made as the API key's user, usually the admin, so Seerr approves them
