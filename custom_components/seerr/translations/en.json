@@ -1,0 +1,118 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Seerr",
+        "description": "Search and request movies and TV shows through a Seerr (or Overseerr/Jellyseerr) server.",
+        "data": {
+          "url": "Server URL",
+          "api_key": "API key"
+        },
+        "data_description": {
+          "url": "For example http://192.168.1.10:5055. A bare host name or IP address uses http and port 5055.",
+          "api_key": "In Seerr under Settings → General. Requests are made as the API key's user, usually the admin, and are approved automatically."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Seerr API key rejected",
+        "description": "{url} rejected the API key. Enter the current one from Settings → General.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the server.",
+      "invalid_auth": "The server rejected the API key.",
+      "invalid_url": "Enter an http or https URL or a host name.",
+      "not_seerr": "The server answered, but not like a Seerr server.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This Seerr server is already configured.",
+      "reauth_successful": "The API key was updated."
+    }
+  },
+  "selector": {
+    "media_type": {
+      "options": {
+        "movie": "Movie",
+        "tv": "TV show"
+      }
+    }
+  },
+  "services": {
+    "search": {
+      "name": "Search",
+      "description": "Searches movies and TV shows and returns each one's TMDB id, year and status (available, requested or not).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Seerr server",
+          "description": "Only needed when more than one Seerr server is set up."
+        },
+        "query": {
+          "name": "Title",
+          "description": "Movie or TV show title to look for."
+        },
+        "media_type": {
+          "name": "Type",
+          "description": "Only movies or only TV shows."
+        },
+        "year": {
+          "name": "Year",
+          "description": "Release year (first air year for TV)."
+        }
+      }
+    },
+    "request": {
+      "name": "Request",
+      "description": "Requests a movie, or every season of a TV show, by title or TMDB id. Returns requested, already_available, already_requested, ambiguous with the options, or not_found.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Seerr server",
+          "description": "Only needed when more than one Seerr server is set up."
+        },
+        "query": {
+          "name": "Title",
+          "description": "Title to request. A title that matches more than one show or movie is not requested; add a type or year, or use the TMDB id."
+        },
+        "media_type": {
+          "name": "Type",
+          "description": "Only movies or only TV shows."
+        },
+        "year": {
+          "name": "Year",
+          "description": "Release year (first air year for TV)."
+        },
+        "tmdb_id": {
+          "name": "TMDB id",
+          "description": "Request this TMDB id instead of searching. Needs a type."
+        },
+        "is_4k": {
+          "name": "4K",
+          "description": "Request the 4K version, from the 4K Radarr or Sonarr server."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "No Seerr server with config entry id {entry_id}."
+    },
+    "no_server": {
+      "message": "No Seerr server is set up and loaded."
+    },
+    "pick_server": {
+      "message": "More than one Seerr server is set up; choose one."
+    },
+    "action_failed": {
+      "message": "Seerr request failed: {error}"
+    },
+    "ambiguous": {
+      "message": "\"{query}\" matches more than one title: {options}. Add a type or year, or use the TMDB id."
+    },
+    "not_found": {
+      "message": "Nothing found for \"{query}\"."
+    }
+  }
+}

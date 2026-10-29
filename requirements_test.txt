@@ -1,0 +1,8 @@
+pytest-homeassistant-custom-component==0.13.372
+pytest-cov>=7.0
+pytest-timeout>=2.4
+ruff>=0.16
+mypy>=1.18
+gazetteer-matcher
+hassil
+home-assistant-intents

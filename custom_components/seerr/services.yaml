@@ -1,0 +1,47 @@
+search:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: seerr
+    query:
+      required: true
+      example: Dig
+      selector:
+        text:
+    media_type: &media_type
+      selector:
+        select:
+          options:
+            - movie
+            - tv
+          translation_key: media_type
+    year: &year
+      example: 2015
+      selector:
+        number:
+          min: 1870
+          max: 2200
+          mode: box
+request:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: seerr
+    query:
+      example: Dig
+      selector:
+        text:
+    media_type: *media_type
+    year: *year
+    tmdb_id:
+      example: 62120
+      selector:
+        number:
+          min: 1
+          mode: box
+    is_4k:
+      default: false
+      selector:
+        boolean:
