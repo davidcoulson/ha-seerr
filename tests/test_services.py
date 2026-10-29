@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from freezegun.api import FrozenDateTimeFactory
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
@@ -13,7 +14,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
-from .conftest import API, posted
+from .conftest import API, item, posted
 
 
 @pytest.mark.parametrize(
@@ -115,7 +116,24 @@ async def test_request_conflict_is_already_requested(
     assert response["result"] == "already_requested"
 
 
-async def test_request_ambiguous(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
+async def test_request_prefers_new_release(
+    hass: HomeAssistant,
+    loaded: MockConfigEntry,
+    seerr: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    freezer.move_to("2026-10-28")
+    response = await hass.services.async_call(
+        DOMAIN, "request", {"query": "Dig"}, blocking=True, return_response=True
+    )
+    assert response["result"] == "requested"
+    assert posted(seerr)[-1]["mediaId"] == 290826
+
+
+async def test_request_ambiguous(
+    hass: HomeAssistant, loaded: MockConfigEntry, freezer: FrozenDateTimeFactory
+) -> None:
+    freezer.move_to("2030-01-01")
     response = await hass.services.async_call(
         DOMAIN, "request", {"query": "Dig"}, blocking=True, return_response=True
     )
@@ -144,11 +162,87 @@ async def test_server_error(
     hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
 ) -> None:
     seerr.clear_requests()
-    seerr.get(f"{API}/search", status=500, text="boom")
-    with pytest.raises(HomeAssistantError, match="HTTP 500"):
+    seerr.get(f"{API}/search", status=500, text="boom test-key")
+    with pytest.raises(HomeAssistantError, match="HTTP 500") as err:
         await hass.services.async_call(
             DOMAIN, "search", {"query": "x"}, blocking=True, return_response=True
         )
+    assert "test-key" not in str(err.value)
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "match"),
+    [
+        (302, None, "HTTP 302"),
+        (200, {"results": [{"mediaType": "movie"}]}, "Unexpected search response"),
+        (200, {"results": None}, "Unexpected search response"),
+    ],
+)
+async def test_bad_search_responses(
+    hass: HomeAssistant,
+    loaded: MockConfigEntry,
+    seerr: AiohttpClientMocker,
+    status: int,
+    body: object,
+    match: str,
+) -> None:
+    seerr.clear_requests()
+    seerr.get(
+        f"{API}/search",
+        status=status,
+        json=body,
+        headers={"Location": "http://elsewhere.example/"},
+    )
+    with pytest.raises(HomeAssistantError, match=match):
+        await hass.services.async_call(
+            DOMAIN, "search", {"query": "x"}, blocking=True, return_response=True
+        )
+
+
+async def test_nothing_new_to_request(
+    hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
+) -> None:
+    seerr.clear_requests()
+    seerr.post(f"{API}/request", status=202, json={})
+    response = await hass.services.async_call(
+        DOMAIN,
+        "request",
+        {"tmdb_id": 62120, "media_type": "tv"},
+        blocking=True,
+        return_response=True,
+    )
+    assert response["result"] == "already_requested"
+
+
+async def test_pending_show_is_still_requested(
+    hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
+) -> None:
+    # Seerr requests only the seasons that are missing.
+    seerr.clear_requests()
+    seerr.get(
+        f"{API}/search",
+        json={"results": [item(62120, "tv", "Dig", "2015-03-05", 91, status=2)]},
+    )
+    seerr.post(f"{API}/request", status=201, json={"id": 8})
+    response = await hass.services.async_call(
+        DOMAIN, "request", {"query": "Dig"}, blocking=True, return_response=True
+    )
+    assert response["result"] == "requested"
+    assert posted(seerr)[-1]["mediaId"] == 62120
+
+
+async def test_rejected_key_starts_reauth(
+    hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
+) -> None:
+    seerr.clear_requests()
+    seerr.get(f"{API}/search", status=401)
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            DOMAIN, "search", {"query": "x"}, blocking=True, return_response=True
+        )
+    await hass.async_block_till_done()
+    flows = hass.config_entries.flow.async_progress()
+    assert [f["context"]["source"] for f in flows] == ["reauth"]
 
 
 async def test_entry_selection(hass: HomeAssistant, loaded: MockConfigEntry) -> None:

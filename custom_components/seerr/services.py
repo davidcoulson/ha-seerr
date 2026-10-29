@@ -6,7 +6,7 @@ from typing import Any
 
 import probatio
 
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
@@ -17,7 +17,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
-from .api import SeerrClient, SeerrError
+from .api import SeerrAuthError, SeerrClient, SeerrError
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_IS_4K,
@@ -33,12 +33,11 @@ from .const import (
 from .media import async_request_media, async_search
 
 QUERY = probatio.All(cv.string, probatio.Strip, probatio.Length(min=1))
+YEAR = probatio.All(probatio.Coerce(int), probatio.Range(min=1870, max=2200))
 COMMON = {
     probatio.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
     probatio.Optional(ATTR_MEDIA_TYPE): probatio.In(MEDIA_TYPES),
-    probatio.Optional(ATTR_YEAR): probatio.All(
-        probatio.Coerce(int), probatio.Range(min=1870, max=2200)
-    ),
+    probatio.Optional(ATTR_YEAR): YEAR,
 }
 
 SEARCH_SCHEMA = probatio.Schema({probatio.Required(ATTR_QUERY): QUERY, **COMMON})
@@ -84,8 +83,8 @@ def async_setup_services(hass: HomeAssistant) -> None:
     )
 
 
-def get_client(hass: HomeAssistant, entry_id: str | None = None) -> SeerrClient:
-    """Return the client of the given entry, or of the only loaded one."""
+def get_entry(hass: HomeAssistant, entry_id: str | None = None) -> ConfigEntry:
+    """Return the given entry, or the only loaded one."""
     entries = [
         e
         for e in hass.config_entries.async_entries(DOMAIN)
@@ -103,11 +102,28 @@ def get_client(hass: HomeAssistant, entry_id: str | None = None) -> SeerrClient:
             translation_domain=DOMAIN,
             translation_key="no_server" if not loaded else "pick_server",
         )
-    client: SeerrClient = loaded[0].runtime_data
+    return loaded[0]
+
+
+def client_of(entry: ConfigEntry) -> SeerrClient:
+    """Return an entry's client."""
+    client: SeerrClient = entry.runtime_data
     return client
 
 
-def _action_error(err: SeerrError) -> HomeAssistantError:
+@callback
+def async_handle_auth_error(
+    hass: HomeAssistant, entry: ConfigEntry, err: Exception
+) -> None:
+    """Ask for a new API key when Seerr rejects the current one."""
+    if isinstance(err, SeerrAuthError):
+        entry.async_start_reauth(hass)
+
+
+def _action_error(
+    hass: HomeAssistant, entry: ConfigEntry, err: SeerrError
+) -> HomeAssistantError:
+    async_handle_auth_error(hass, entry, err)
     return HomeAssistantError(
         translation_domain=DOMAIN,
         translation_key="action_failed",
@@ -116,24 +132,24 @@ def _action_error(err: SeerrError) -> HomeAssistantError:
 
 
 async def _async_handle_search(call: ServiceCall) -> ServiceResponse:
-    client = get_client(call.hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+    entry = get_entry(call.hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
     try:
         results = await async_search(
-            client,
+            client_of(entry),
             call.data[ATTR_QUERY],
             call.data.get(ATTR_MEDIA_TYPE),
             call.data.get(ATTR_YEAR),
         )
     except SeerrError as err:
-        raise _action_error(err) from err
+        raise _action_error(call.hass, entry, err) from err
     return {"results": [r.as_dict() for r in results]}
 
 
 async def _async_handle_request(call: ServiceCall) -> ServiceResponse:
-    client = get_client(call.hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+    entry = get_entry(call.hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
     try:
         outcome = await async_request_media(
-            client,
+            client_of(entry),
             query=call.data.get(ATTR_QUERY),
             tmdb_id=call.data.get(ATTR_TMDB_ID),
             media_type=call.data.get(ATTR_MEDIA_TYPE),
@@ -141,7 +157,7 @@ async def _async_handle_request(call: ServiceCall) -> ServiceResponse:
             is_4k=call.data[ATTR_IS_4K],
         )
     except SeerrError as err:
-        raise _action_error(err) from err
+        raise _action_error(call.hass, entry, err) from err
     if outcome["result"] in ("ambiguous", "not_found") and not call.return_response:
         # A caller that does not read the response would never learn of it.
         raise ServiceValidationError(

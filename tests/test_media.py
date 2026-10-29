@@ -40,13 +40,27 @@ def test_from_api() -> None:
 
 
 def test_same_title_of_similar_standing_is_ambiguous() -> None:
-    match, options = pick_match(DIG, "Dig")
+    match, options = pick_match(DIG, "Dig", 2030)
     assert match is None
     assert titles(options) == [
         ("Dig", 2015, "tv"),
         ("Dig", 2026, "tv"),
         ("Dig", 2022, "movie"),
     ]
+
+
+@pytest.mark.parametrize(("year", "tmdb_id"), [(2025, 290826), (2027, 290826)])
+def test_new_release_is_meant(year: int, tmdb_id: int) -> None:
+    # Coming soon (2025), or out last year (2027), beats the better-known 2015 show.
+    match, _ = pick_match(DIG, "Dig", year)
+    assert match is not None
+    assert match.tmdb_id == tmdb_id
+
+
+def test_singleton_with_another_title_is_not_a_match() -> None:
+    match, options = pick_match(DIG[2:3], "Dig Deep")
+    assert match is None
+    assert [o.tmdb_id for o in options] == [532865]
 
 
 def test_type_and_year_narrow_to_one() -> None:
@@ -56,8 +70,8 @@ def test_type_and_year_narrow_to_one() -> None:
 
 
 def test_far_better_known_title_wins() -> None:
-    # Dig 2015 (91 votes) over the unreleased Dig 2026 (0 votes).
-    match, _ = pick_match(filter_results(DIG, "tv", None), "dig")
+    # Once neither is new: Dig 2015 (91 votes) over Dig 2026 (0 votes).
+    match, _ = pick_match(filter_results(DIG, "tv", None), "dig", 2030)
     assert match is not None
     assert match.tmdb_id == 62120
     oppenheimer = [
@@ -76,7 +90,7 @@ def test_only_exact_title_wins() -> None:
 
 
 def test_article_only_matters_when_nothing_else_matches() -> None:
-    match, _ = pick_match(DIG, "dig")
+    match, _ = pick_match(DIG, "dig", 2030)
     assert match is None
     match, _ = pick_match(filter_results(DIG, "movie", 2021), "Dig")
     assert match is not None

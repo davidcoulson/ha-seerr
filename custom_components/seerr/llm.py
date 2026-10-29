@@ -7,9 +7,10 @@ from typing import Any, override
 import probatio
 
 from homeassistant.components.llm import LLMTools
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.llm import (
     LLM_API_ASSIST,
     LLMContext,
@@ -29,7 +30,13 @@ from .const import (
     MEDIA_TYPES,
 )
 from .media import async_request_media, async_search
-from .services import get_client
+from .services import (
+    QUERY,
+    YEAR,
+    async_handle_auth_error,
+    client_of,
+    get_entry,
+)
 
 MEDIA_TYPE_DESCRIPTION = "movie or tv; leave out when the user did not say"
 YEAR_DESCRIPTION = "Release or first air year, only when the user gave one"
@@ -52,11 +59,11 @@ class SearchMediaTool(Tool):
     integration = DOMAIN
     parameters = probatio.Schema(
         {
-            probatio.Required(ATTR_QUERY, description="Title to search for"): str,
+            probatio.Required(ATTR_QUERY, description="Title to search for"): QUERY,
             probatio.Optional(
                 ATTR_MEDIA_TYPE, description=MEDIA_TYPE_DESCRIPTION
             ): probatio.In(MEDIA_TYPES),
-            probatio.Optional(ATTR_YEAR, description=YEAR_DESCRIPTION): int,
+            probatio.Optional(ATTR_YEAR, description=YEAR_DESCRIPTION): YEAR,
         }
     )
 
@@ -64,16 +71,17 @@ class SearchMediaTool(Tool):
     async def async_call(
         self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext
     ) -> ToolResult:
-        args = self.parameters(tool_input.tool_args)
         try:
+            args = self.parameters(tool_input.tool_args)
+            entry = _entry(hass)
             results = await async_search(
-                get_client(hass),
+                client_of(entry),
                 args[ATTR_QUERY],
                 args.get(ATTR_MEDIA_TYPE),
                 args.get(ATTR_YEAR),
             )
-        except (SeerrError, HomeAssistantError) as err:
-            return ToolResult(data={"error": str(err)}, error=True)
+        except (probatio.Invalid, SeerrError, HomeAssistantError) as err:
+            return _error(hass, err)
         return ToolResult(data={"results": [r.as_dict() for r in results[:10]]})
 
 
@@ -94,16 +102,16 @@ class RequestMediaTool(Tool):
     integration = DOMAIN
     parameters = probatio.Schema(
         {
-            probatio.Optional(ATTR_QUERY, description="Title to request"): str,
+            probatio.Optional(ATTR_QUERY, description="Title to request"): QUERY,
             probatio.Optional(
                 ATTR_MEDIA_TYPE, description=MEDIA_TYPE_DESCRIPTION
             ): probatio.In(MEDIA_TYPES),
-            probatio.Optional(ATTR_YEAR, description=YEAR_DESCRIPTION): int,
+            probatio.Optional(ATTR_YEAR, description=YEAR_DESCRIPTION): YEAR,
             probatio.Optional(
                 ATTR_TMDB_ID,
                 description="TMDB id from an earlier search or ambiguous result; "
                 "needs media_type",
-            ): int,
+            ): cv.positive_int,
         }
     )
 
@@ -111,24 +119,44 @@ class RequestMediaTool(Tool):
     async def async_call(
         self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext
     ) -> ToolResult:
-        args: dict[str, Any] = self.parameters(tool_input.tool_args)
+        try:
+            args: dict[str, Any] = self.parameters(tool_input.tool_args)
+        except probatio.Invalid as err:
+            return _error(hass, err)
         tmdb_id = args.get(ATTR_TMDB_ID)
         if ATTR_QUERY not in args and (tmdb_id is None or ATTR_MEDIA_TYPE not in args):
-            return ToolResult(
-                data={"error": "Give a query, or a tmdb_id with a media_type"},
-                error=True,
+            return _error(
+                hass, ValueError("Give a query, or a tmdb_id with a media_type")
             )
         try:
             outcome = await async_request_media(
-                get_client(hass),
+                client_of(_entry(hass)),
                 query=args.get(ATTR_QUERY),
                 tmdb_id=tmdb_id,
                 media_type=args.get(ATTR_MEDIA_TYPE),
                 year=args.get(ATTR_YEAR),
             )
         except (SeerrError, HomeAssistantError) as err:
-            return ToolResult(data={"error": str(err)}, error=True)
+            return _error(hass, err)
         return ToolResult(data=outcome)
+
+
+def _entry(hass: HomeAssistant) -> ConfigEntry:
+    # shortcut: tools use the first loaded server; add a server argument if
+    # anyone runs more than one Seerr.
+    loaded = [
+        e
+        for e in hass.config_entries.async_entries(DOMAIN)
+        if e.state is ConfigEntryState.LOADED
+    ]
+    return get_entry(hass, loaded[0].entry_id if loaded else None)
+
+
+def _error(hass: HomeAssistant, err: Exception) -> ToolResult:
+    if isinstance(err, SeerrError):
+        for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+            async_handle_auth_error(hass, entry, err)
+    return ToolResult(data={"error": str(err)}, error=True)
 
 
 @callback

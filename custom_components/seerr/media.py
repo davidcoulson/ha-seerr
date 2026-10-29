@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 import re
 from typing import Any
 
@@ -38,18 +39,18 @@ def filter_results(
 
 
 def pick_match(
-    results: list[MediaResult], query: str
+    results: list[MediaResult], query: str, this_year: int | None = None
 ) -> tuple[MediaResult | None, list[MediaResult]]:
     """Return (the clear match, []) or (None, the options to choose from).
 
-    A clear match is the only result, or the only one whose title equals the
-    query, or the one of those with CLEAR_FAVOURITE times the votes of the
-    next. Equal titles of similar standing (the UK and US Office) or no equal
-    title at all are left to the caller to choose, so nothing is requested by
+    Among results whose title equals the query, new ones (out this year or
+    last, or still to come) are meant over old ones. A clear match is then the
+    only one left, or the one with CLEAR_FAVOURITE times the votes of the next.
+    Equal titles of similar standing (the UK and US Office) or no equal title
+    at all are left to the caller to choose, so nothing is requested by
     guesswork.
     """
-    if len(results) == 1:
-        return results[0], []
+    this_year = this_year or date.today().year
     exact: list[MediaResult] = []
     # "Dig" means Dig, not The Dig; "office" still finds The Office.
     for drop_article in (False, True):
@@ -61,6 +62,9 @@ def pick_match(
         ]
         if exact:
             break
+    # "Dig" said in 2026 means the show just out, not the 2015 one.
+    new = [r for r in exact if r.year is not None and r.year >= this_year - 1]
+    exact = new or exact
     if len(exact) == 1:
         return exact[0], []
     if exact:
@@ -107,14 +111,20 @@ async def async_request_media(
                 "options": [o.as_dict() for o in options],
             }
         media = match.as_dict()
-        if not is_4k and (already := ALREADY_HAVE.get(match.status)):
+        already = ALREADY_HAVE.get(match.status)
+        # A pending show may still lack seasons; Seerr requests only those.
+        if match.media_type == "tv" and match.status is not MediaStatus.AVAILABLE:
+            already = None
+        if not is_4k and already:
             return {"result": already, "media": media}
 
     try:
-        await client.async_request(media["media_type"], media["tmdb_id"], is_4k=is_4k)
+        created = await client.async_request(
+            media["media_type"], media["tmdb_id"], is_4k=is_4k
+        )
     except SeerrResponseError as err:
         # Seerr answers 409 when the title is already requested.
         if err.status == 409:
             return {"result": "already_requested", "media": media}
         raise
-    return {"result": "requested", "media": media}
+    return {"result": "requested" if created else "already_requested", "media": media}

@@ -27,10 +27,12 @@ automatically.
   `requested`, `already_available`, `already_requested`, `ambiguous` (with `options`) or
   `not_found`. Called without reading the response, `ambiguous` and `not_found` raise an error.
 
-A title is only requested when it is clear which one is meant: the only result, the only one
-whose title is the query, or one with ten times the votes of the next one with that title
-(Oppenheimer 2023 over a 1980 mini-series). "The Office" (US or UK) comes back as
-`ambiguous`, so you can choose.
+A title is only requested when it is clear which one is meant. Among the results whose title
+is the query, a new one (out this year or last, or still to come) is meant over older ones, so
+"Dig" in 2026 is the 2026 show, not the 2015 one. Of those left, the only one, or one with ten
+times the votes of the next, is requested (Oppenheimer 2023 over a 1980 mini-series). "The
+Office" (US or UK) comes back as `ambiguous`, so you can choose. Give a year or a media type to
+pick an older title.
 
 ## Voice (LLM tools)
 

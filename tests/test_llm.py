@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from freezegun.api import FrozenDateTimeFactory
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMocker,
@@ -41,8 +42,12 @@ async def test_no_tools_without_server(hass: HomeAssistant) -> None:
 
 
 async def test_tools(
-    hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
+    hass: HomeAssistant,
+    loaded: MockConfigEntry,
+    seerr: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
 ) -> None:
+    freezer.move_to("2030-01-01")
     api = await _api(hass)
     names = {t.name for t in api.tools}
     assert {"seerr__search_media", "seerr__request_media"} <= names
@@ -58,6 +63,10 @@ async def test_tools(
 
     result = await _call(api, "seerr__request_media", tmdb_id=62120)
     assert "error" in result
+    result = await _call(api, "seerr__search_media", query="dig", year="soon")
+    assert "error" in result
+    result = await _call(api, "seerr__request_media", query="")
+    assert "error" in result
 
     seerr.clear_requests()
     seerr.get(f"{API}/search", status=500)
@@ -65,3 +74,12 @@ async def test_tools(
     assert "error" in result
     result = await _call(api, "seerr__request_media", query="x")
     assert "error" in result
+
+    seerr.clear_requests()
+    seerr.get(f"{API}/search", status=401)
+    result = await _call(api, "seerr__search_media", query="x")
+    assert "error" in result
+    await hass.async_block_till_done()
+    assert [
+        f["context"]["source"] for f in hass.config_entries.flow.async_progress()
+    ] == ["reauth"]

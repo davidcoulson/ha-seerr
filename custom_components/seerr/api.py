@@ -100,22 +100,27 @@ class SeerrClient:
 
     async def _request(
         self, method: str, path: str, *, query: str = "", json: Any = None
-    ) -> Any:
+    ) -> tuple[int, Any]:
         # Seerr rejects queries that are not percent-encoded like
         # encodeURIComponent (a '+' for a space or a bare '!' gives a 400).
         url = URL(f"{self._url}/api/v1{path}{query}", encoded=True)
         try:
             async with self._session.request(
-                method, url, headers=self._headers, json=json, timeout=REQUEST_TIMEOUT
+                method,
+                url,
+                headers=self._headers,
+                json=json,
+                timeout=REQUEST_TIMEOUT,
+                # aiohttp keeps custom headers such as X-Api-Key on a redirect
+                # to another host.
+                allow_redirects=False,
             ) as resp:
                 if resp.status in (401, 403):
                     raise SeerrAuthError(f"API key rejected ({resp.status})")
-                if resp.status >= 400:
-                    text = await resp.text()
-                    raise SeerrResponseError(
-                        f"HTTP {resp.status}: {text[:200]}", resp.status
-                    )
-                return await resp.json(content_type=None)
+                # The body is not quoted: a proxy could echo the key back.
+                if resp.status >= 300:
+                    raise SeerrResponseError(f"HTTP {resp.status}", resp.status)
+                return resp.status, await resp.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise SeerrConnectionError(str(err) or type(err).__name__) from err
         except ValueError as err:
@@ -123,14 +128,14 @@ class SeerrClient:
 
     async def async_get_user(self) -> dict[str, Any]:
         """Return the user the API key belongs to (validates the key)."""
-        data = await self._request("GET", "/auth/me")
+        _, data = await self._request("GET", "/auth/me")
         if not isinstance(data, dict) or "id" not in data:
             raise SeerrResponseError("Not a Seerr server")
         return data
 
     async def async_search(self, query: str) -> list[MediaResult]:
         """Search movies and TV shows, in TMDB relevance order."""
-        data = await self._request(
+        _, data = await self._request(
             "GET", "/search", query=f"?query={quote(query, safe='')}&page=1"
         )
         try:
@@ -139,13 +144,17 @@ class SeerrClient:
                 for item in data["results"]
                 if item.get("mediaType") in ("movie", "tv")
             ]
-        except (KeyError, TypeError) as err:
+        except (AttributeError, KeyError, TypeError, ValueError) as err:
             raise SeerrResponseError(f"Unexpected search response: {err}") from err
 
     async def async_request(
         self, media_type: str, tmdb_id: int, *, is_4k: bool = False
-    ) -> dict[str, Any]:
-        """Request a movie, or every season of a TV show."""
+    ) -> bool:
+        """Request a movie, or every season of a TV show not yet requested.
+
+        Returns False when Seerr created nothing: it answers 202 when every
+        season is already requested or available.
+        """
         body: dict[str, Any] = {
             "mediaType": media_type,
             "mediaId": tmdb_id,
@@ -153,5 +162,5 @@ class SeerrClient:
         }
         if media_type == "tv":
             body["seasons"] = "all"
-        data: dict[str, Any] = await self._request("POST", "/request", json=body)
-        return data
+        status, _ = await self._request("POST", "/request", json=body)
+        return status != 202
