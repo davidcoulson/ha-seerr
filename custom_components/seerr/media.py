@@ -95,8 +95,10 @@ async def async_request_media(
     Returns a dict whose "result" is requested, already_available,
     already_requested, ambiguous (with "options") or not_found.
     """
+    match: MediaResult | None
     if tmdb_id is not None and media_type is not None:
-        media: dict[str, Any] = {"tmdb_id": tmdb_id, "media_type": media_type}
+        # TMDB ids are per type; the lookup also gives the title and status.
+        match = await client.async_get_media(media_type, tmdb_id)
     else:
         if query is None:
             raise ValueError("query, or tmdb_id with media_type, is required")
@@ -110,13 +112,13 @@ async def async_request_media(
                 "query": query,
                 "options": [o.as_dict() for o in options],
             }
-        media = match.as_dict()
-        already = ALREADY_HAVE.get(match.status)
-        # A pending show may still lack seasons; Seerr requests only those.
-        if match.media_type == "tv" and match.status is not MediaStatus.AVAILABLE:
-            already = None
-        if not is_4k and already:
-            return {"result": already, "media": media}
+    media = match.as_dict()
+    already = ALREADY_HAVE.get(match.status)
+    # A pending show may still lack seasons; Seerr requests only those.
+    if match.media_type == "tv" and match.status is not MediaStatus.AVAILABLE:
+        already = None
+    if not is_4k and already:
+        return {"result": already, "media": media}
 
     try:
         created = await client.async_request(

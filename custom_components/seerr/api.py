@@ -115,7 +115,9 @@ class SeerrClient:
                 # to another host.
                 allow_redirects=False,
             ) as resp:
-                if resp.status in (401, 403):
+                # POST /request also answers 403 for a blocklisted title or an
+                # exhausted quota, which says nothing about the key.
+                if resp.status == 401 or (resp.status == 403 and method == "GET"):
                     raise SeerrAuthError(f"API key rejected ({resp.status})")
                 # The body is not quoted: a proxy could echo the key back.
                 if resp.status >= 300:
@@ -146,6 +148,14 @@ class SeerrClient:
             ]
         except (AttributeError, KeyError, TypeError, ValueError) as err:
             raise SeerrResponseError(f"Unexpected search response: {err}") from err
+
+    async def async_get_media(self, media_type: str, tmdb_id: int) -> MediaResult:
+        """Return one movie or TV show by TMDB id, with its status."""
+        _, data = await self._request("GET", f"/{media_type}/{tmdb_id}")
+        try:
+            return MediaResult.from_api({**data, "mediaType": media_type})
+        except (AttributeError, KeyError, TypeError, ValueError) as err:
+            raise SeerrResponseError(f"Unexpected media response: {err}") from err
 
     async def async_request(
         self, media_type: str, tmdb_id: int, *, is_4k: bool = False
