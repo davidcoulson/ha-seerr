@@ -95,6 +95,7 @@ async def async_request_media(
     Returns a dict whose "result" is requested, already_available,
     already_requested, ambiguous (with "options") or not_found.
     """
+    match: MediaResult | None
     if tmdb_id is not None and media_type is not None:
         # TMDB ids are per type; the lookup also gives the title and status.
         match = await client.async_get_media(media_type, tmdb_id)
