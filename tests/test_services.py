@@ -14,7 +14,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
-from .conftest import API, item, posted
+from .conftest import API, DIG_RESULTS, item, posted
 
 
 @pytest.mark.parametrize(
@@ -105,6 +105,7 @@ async def test_request_conflict_is_already_requested(
     hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
 ) -> None:
     seerr.clear_requests()
+    seerr.get(f"{API}/tv/62120", json=DIG_RESULTS[0])
     seerr.post(f"{API}/request", status=409, text="Request already exists")
     response = await hass.services.async_call(
         DOMAIN,
@@ -203,6 +204,7 @@ async def test_nothing_new_to_request(
     hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
 ) -> None:
     seerr.clear_requests()
+    seerr.get(f"{API}/tv/62120", json=DIG_RESULTS[0])
     seerr.post(f"{API}/request", status=202, json={})
     response = await hass.services.async_call(
         DOMAIN,
@@ -261,3 +263,19 @@ async def test_entry_selection(hass: HomeAssistant, loaded: MockConfigEntry) -> 
             DOMAIN, "search", {"query": "x"}, blocking=True, return_response=True
         )
     assert err.value.translation_key == "no_server"
+
+
+async def test_request_by_id_checks_availability(
+    hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
+) -> None:
+    """An id for a title already on Plex requests nothing and names the title."""
+    result = await hass.services.async_call(
+        DOMAIN,
+        "request",
+        {"tmdb_id": 816956, "media_type": "movie"},
+        blocking=True,
+        return_response=True,
+    )
+    assert result["result"] == "already_available"
+    assert result["media"]["title"] == "Dig"
+    assert not posted(seerr)

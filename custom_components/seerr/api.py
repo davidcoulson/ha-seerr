@@ -149,6 +149,14 @@ class SeerrClient:
         except (AttributeError, KeyError, TypeError, ValueError) as err:
             raise SeerrResponseError(f"Unexpected search response: {err}") from err
 
+    async def async_get_media(self, media_type: str, tmdb_id: int) -> MediaResult:
+        """Return one movie or TV show by TMDB id, with its status."""
+        _, data = await self._request("GET", f"/{media_type}/{tmdb_id}")
+        try:
+            return MediaResult.from_api({**data, "mediaType": media_type})
+        except (AttributeError, KeyError, TypeError, ValueError) as err:
+            raise SeerrResponseError(f"Unexpected media response: {err}") from err
+
     async def async_request(
         self, media_type: str, tmdb_id: int, *, is_4k: bool = False
     ) -> bool:

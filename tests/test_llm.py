@@ -12,7 +12,7 @@ from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import llm
 from homeassistant.setup import async_setup_component
 
-from .conftest import API, posted
+from .conftest import API, DIG_RESULTS, posted
 
 
 async def _api(hass: HomeAssistant) -> llm.APIInstance:
@@ -91,6 +91,7 @@ async def test_forbidden_request_is_not_a_rejected_key(
     """Seerr answers 403 to a blocklisted title; the key is fine."""
     api = await _api(hass)
     seerr.clear_requests()
+    seerr.get(f"{API}/tv/62120", json=DIG_RESULTS[0])
     seerr.post(f"{API}/request", status=403)
     result = await _call(api, "seerr__request_media", tmdb_id=62120, media_type="tv")
     assert "error" in result

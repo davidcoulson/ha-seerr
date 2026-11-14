@@ -74,6 +74,8 @@ def seerr(aioclient_mock: AiohttpClientMocker) -> AiohttpClientMocker:
     """Mock a working Seerr server whose search returns DIG_RESULTS."""
     aioclient_mock.get(f"{API}/auth/me", json={"id": 1, "displayName": "Admin"})
     aioclient_mock.get(f"{API}/search", json={"results": DIG_RESULTS})
+    for result in DIG_RESULTS[:4]:
+        aioclient_mock.get(f"{API}/{result['mediaType']}/{result['id']}", json=result)
     aioclient_mock.post(f"{API}/request", json={"id": 7}, status=201)
     return aioclient_mock
 

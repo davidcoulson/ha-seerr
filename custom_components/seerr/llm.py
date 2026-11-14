@@ -126,9 +126,7 @@ class RequestMediaTool(Tool):
             return _error(err)
         tmdb_id = args.get(ATTR_TMDB_ID)
         if ATTR_QUERY not in args and (tmdb_id is None or ATTR_MEDIA_TYPE not in args):
-            return _error(
-                ValueError("Give a query, or a tmdb_id with a media_type")
-            )
+            return _error(ValueError("Give a query, or a tmdb_id with a media_type"))
         entry: ConfigEntry | None = None
         try:
             entry = _entry(hass)
