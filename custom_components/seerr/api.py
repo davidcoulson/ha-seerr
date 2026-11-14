@@ -115,7 +115,9 @@ class SeerrClient:
                 # to another host.
                 allow_redirects=False,
             ) as resp:
-                if resp.status in (401, 403):
+                # POST /request also answers 403 for a blocklisted title or an
+                # exhausted quota, which says nothing about the key.
+                if resp.status == 401 or (resp.status == 403 and method == "GET"):
                     raise SeerrAuthError(f"API key rejected ({resp.status})")
                 # The body is not quoted: a proxy could echo the key back.
                 if resp.status >= 300:

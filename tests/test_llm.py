@@ -83,3 +83,16 @@ async def test_tools(
     assert [
         f["context"]["source"] for f in hass.config_entries.flow.async_progress()
     ] == ["reauth"]
+
+
+async def test_forbidden_request_is_not_a_rejected_key(
+    hass: HomeAssistant, loaded: MockConfigEntry, seerr: AiohttpClientMocker
+) -> None:
+    """Seerr answers 403 to a blocklisted title; the key is fine."""
+    api = await _api(hass)
+    seerr.clear_requests()
+    seerr.post(f"{API}/request", status=403)
+    result = await _call(api, "seerr__request_media", tmdb_id=62120, media_type="tv")
+    assert "error" in result
+    await hass.async_block_till_done()
+    assert not hass.config_entries.flow.async_progress()
