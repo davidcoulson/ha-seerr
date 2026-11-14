@@ -71,6 +71,7 @@ class SearchMediaTool(Tool):
     async def async_call(
         self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext
     ) -> ToolResult:
+        entry: ConfigEntry | None = None
         try:
             args = self.parameters(tool_input.tool_args)
             entry = _entry(hass)
@@ -81,7 +82,7 @@ class SearchMediaTool(Tool):
                 args.get(ATTR_YEAR),
             )
         except (probatio.Invalid, SeerrError, HomeAssistantError) as err:
-            return _error(hass, err)
+            return _error(err, hass, entry)
         return ToolResult(data={"results": [r.as_dict() for r in results[:10]]})
 
 
@@ -122,22 +123,24 @@ class RequestMediaTool(Tool):
         try:
             args: dict[str, Any] = self.parameters(tool_input.tool_args)
         except probatio.Invalid as err:
-            return _error(hass, err)
+            return _error(err)
         tmdb_id = args.get(ATTR_TMDB_ID)
         if ATTR_QUERY not in args and (tmdb_id is None or ATTR_MEDIA_TYPE not in args):
             return _error(
-                hass, ValueError("Give a query, or a tmdb_id with a media_type")
+                ValueError("Give a query, or a tmdb_id with a media_type")
             )
+        entry: ConfigEntry | None = None
         try:
+            entry = _entry(hass)
             outcome = await async_request_media(
-                client_of(_entry(hass)),
+                client_of(entry),
                 query=args.get(ATTR_QUERY),
                 tmdb_id=tmdb_id,
                 media_type=args.get(ATTR_MEDIA_TYPE),
                 year=args.get(ATTR_YEAR),
             )
         except (SeerrError, HomeAssistantError) as err:
-            return _error(hass, err)
+            return _error(err, hass, entry)
         return ToolResult(data=outcome)
 
 
@@ -152,10 +155,11 @@ def _entry(hass: HomeAssistant) -> ConfigEntry:
     return get_entry(hass, loaded[0].entry_id if loaded else None)
 
 
-def _error(hass: HomeAssistant, err: Exception) -> ToolResult:
-    if isinstance(err, SeerrError):
-        for entry in hass.config_entries.async_loaded_entries(DOMAIN):
-            async_handle_auth_error(hass, entry, err)
+def _error(
+    err: Exception, hass: HomeAssistant | None = None, entry: ConfigEntry | None = None
+) -> ToolResult:
+    if hass and entry and isinstance(err, SeerrError):
+        async_handle_auth_error(hass, entry, err)
     return ToolResult(data={"error": str(err)}, error=True)
 
 
