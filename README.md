@@ -30,6 +30,7 @@ automatically.
   `media_type`; optional `is_4k`. TV shows are requested with every season. Returns `result`:
   `requested`, `already_available`, `already_requested`, `ambiguous` (with `options`) or
   `not_found`. Called without reading the response, `ambiguous` and `not_found` raise an error.
+- `seerr.reload_code`: development only (admin). Loads changed Python files without restarting Home Assistant.
 
 A title is only requested when it is clear which one is meant. Among the results whose title
 is the query, a new one (out this year or last, or still to come) is meant over older ones, so
